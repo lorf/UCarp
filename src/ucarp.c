@@ -46,6 +46,7 @@ static void usage(void)
         "--port=<port> (-N <port>): use port for broadcast (with -M)\n"
         "--facility=<facility> (-f): set syslog facility (default=daemon)\n"
         "--xparam=<value> (-x): extra parameter to send to up/down scripts\n"
+		"--udpu=address (-U <address>): target address for unicast UDP encapsulation (ip or ip:port)\n"
         "\n"
         "Sample usage:\n"
         "\n"
@@ -119,6 +120,9 @@ int main(int argc, char *argv[])
                 logfile(LOG_ERR, _("Invalid address: [%s]"), optarg);
                 return 1;
             }
+			if ((srcip_str = strdup(optarg)) == NULL) {
+				die_mem();
+			}
             break;
         }
         case 'm': {
@@ -265,6 +269,35 @@ int main(int argc, char *argv[])
         case 'M': {
             no_mcast = 1;
             break;
+        }
+        case 'U': {
+			int i = 0;
+            if ((udpu_addr = strdup(optarg)) == NULL) {
+                die_mem();
+            }
+			/* parse to get the port - can be: <ip> or <ip:port> */
+			for(; udpu_addr[i]!='\0'; i++) {
+				if(udpu_addr[i]==':') {
+					break;
+				}
+			}
+			if(udpu_addr[i]==':') {
+				/* port */
+				udpu_addr[i]='\0';
+				i++;
+				udpu_port = 0;
+				for(; udpu_addr[i]!='\0'; i++) {
+					if(udpu_addr[i]<'0' || udpu_addr[i]>'9') {
+						logfile(LOG_ERR,
+							_("unable to parse the address for UDP unicast"));
+						return 1;
+					}
+					udpu_port = 10*udpu_port+(unsigned int)(udpu_addr[i]-'0');
+				}
+			}
+			logfile(LOG_INFO, _("Using UDP unicast [%s:%u]"),
+					udpu_addr, udpu_port);
+            break;            
         }
         default: {
             usage();
