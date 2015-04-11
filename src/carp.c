@@ -193,6 +193,7 @@ static void carp_send_ad(struct carp_softc *sc)
     int advbase;
     int advskew;
     int rc;
+    struct sockaddr_in sock_in;
 
     logfile(LOG_DEBUG, "-> carp_send_ad()");
 
@@ -279,9 +280,16 @@ static void carp_send_ad(struct carp_softc *sc)
     ip_ptr[offsetof(struct ip, ip_sum)] = (sum >> 8) & 0xff;
     ip_ptr[offsetof(struct ip, ip_sum) + 1] = sum & 0xff;
 
-    do {
-        rc = write(dev_desc_fd, pkt, eth_len);
-    } while (rc < 0 && errno == EINTR);
+    if (no_mcast) {
+      sock_in.sin_addr.s_addr=htonl(-1);
+      sock_in.sin_port = htons(IPPROTO_CARP);
+      sock_in.sin_family = PF_INET;
+      rc = sendto(broadcast_fd, pkt, eth_len, 0, (struct sockaddr *)&sock_in, sizeof(struct sockaddr_in));
+    } else {
+      do {
+          rc = write(dev_desc_fd, pkt, eth_len);
+      } while (rc < 0 && errno == EINTR);
+    }
     if (rc < 0) {
         logfile(LOG_WARNING, _("write() has failed: %s"), strerror(errno));
         if (sc->sc_sendad_errors < INT_MAX) {
@@ -663,6 +671,35 @@ static char *build_bpf_rule(void)
     return rule;
 }
 
+static void udp_broadcast_dispatch(void)
+{
+  char buffer[3200];
+  int status, buflen;
+  unsigned sinlen;
+  struct sockaddr_in sock_in;
+  int rc = 0;
+  struct pcap_pkthdr header;
+  fd_set readset;
+
+  sinlen = sizeof(struct sockaddr_in);
+  memset(&sock_in, 0, sinlen);
+
+  buflen = sizeof(buffer);
+  memset(buffer, 0, buflen);
+
+
+  if ( (rc = recvfrom(broadcast_fd, buffer, buflen, 0, (struct sockaddr *)&sock_in, &sinlen)) < 0 ) {
+    logfile(LOG_ERR, "recvfrom failed: %d", rc);
+    return;
+  }
+  if ( rc > 0 ) {
+    memset(&header, 0, sizeof(struct pcap_pkthdr));
+    header.caplen = rc;
+    header.len = rc;
+    packethandler(NULL, &header, buffer);
+  }
+}
+
 int docarp(void)
 {
     char errbuf[PCAP_ERRBUF_SIZE];
@@ -677,6 +714,8 @@ int docarp(void)
     struct timeval time_until_advert;
     struct sigaction usr_action;
     struct sigaction term_action;
+    int yes = 1;
+    struct sockaddr_in sock_in;
 
     sc.sc_vhid = vhid;
     sc.sc_advbase = advbase;
@@ -729,7 +768,8 @@ int docarp(void)
     dev_desc_fd = pcap_fileno(dev_desc);
     pfds[0].fd = dev_desc_fd;
     pfds[0].events = POLLIN | POLLERR | POLLHUP;
-
+    pfds[0].revents = 0;
+    
     if (shutdown_at_exit != 0) {
         (void) sigemptyset(&term_action.sa_mask);
         term_action.sa_handler = sighandler_exit;
@@ -800,6 +840,27 @@ int docarp(void)
             close(fd);
             return -1;
         }
+    } else {
+      if ((broadcast_fd = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1) {
+          logfile(LOG_ERR, _("Error opening socket for interface [%s]: %s"),
+                  interface == NULL ? "-" : interface, strerror(errno));
+          return -1;
+      }
+      sock_in.sin_addr.s_addr = htonl(INADDR_ANY);
+      sock_in.sin_port = htons(IPPROTO_CARP);
+      sock_in.sin_family = PF_INET;
+
+      if ((bind(broadcast_fd, (struct sockaddr *)&sock_in, sizeof(struct sockaddr_in))) == -1) {
+        logfile(LOG_ERR, _("Error binding to socket: %s"), strerror(errno));
+        return -1;
+      }
+
+      if ( setsockopt(broadcast_fd, SOL_SOCKET, SO_BROADCAST, &yes, sizeof(int) ) == -1 ) {
+        logfile(LOG_ERR, _("Error setting broadcast: %s"), strerror(errno));
+        return -1;
+      }
+       pfds[0].fd = broadcast_fd;
+
     }
 #ifdef SIOCGIFFLAGS
     if (strlen(interface) >= sizeof iface.ifr_name) {
@@ -897,7 +958,11 @@ int docarp(void)
             continue;
         }
         if (nfds == 1) {
-            pcap_dispatch(dev_desc, 1, packethandler, NULL);
+            if ( no_mcast ) {
+              udp_broadcast_dispatch();
+            } else {
+              pcap_dispatch(dev_desc, 1, packethandler, NULL);
+            }
         }
         if (sc.sc_md_tmo.tv_sec != 0 && timercmp(&now, &sc.sc_md_tmo, >)) {
             carp_master_down(&sc);
