@@ -282,7 +282,7 @@ static void carp_send_ad(struct carp_softc *sc)
 
     if (no_mcast) {
       sock_in.sin_addr.s_addr=htonl(-1);
-      sock_in.sin_port = htons(IPPROTO_CARP);
+      sock_in.sin_port = htons(port);
       sock_in.sin_family = PF_INET;
       rc = sendto(broadcast_fd, pkt, eth_len, 0, (struct sockaddr *)&sock_in, sizeof(struct sockaddr_in));
     } else {
@@ -847,7 +847,7 @@ int docarp(void)
           return -1;
       }
       sock_in.sin_addr.s_addr = htonl(INADDR_ANY);
-      sock_in.sin_port = htons(IPPROTO_CARP);
+      sock_in.sin_port = htons(port);
       sock_in.sin_family = PF_INET;
 
       if ((bind(broadcast_fd, (struct sockaddr *)&sock_in, sizeof(struct sockaddr_in))) == -1) {

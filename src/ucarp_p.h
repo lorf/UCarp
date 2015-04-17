@@ -24,6 +24,7 @@ static struct option long_options[] = {
     { "daemonize", 0, NULL, 'B' },
     { "ignoreifstate", 0, NULL, 'S' },
     { "nomcast", 0, NULL, 'M' },
+    { "port", 1, NULL, 'N' },
     { "passfile", 1, NULL, 'o' },
     { "xparam", 1, NULL, 'x' },
     { NULL, 0, NULL, 0 }

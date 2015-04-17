@@ -13,6 +13,7 @@ GLOBAL0(char *interface);
 GLOBAL0(struct in_addr srcip);
 GLOBAL0(struct in_addr mcastip);
 GLOBAL0(unsigned char vhid);
+GLOBAL0(unsigned char port);
 GLOBAL0(char *pass);
 GLOBAL0(struct in_addr vaddr);
 GLOBAL(unsigned char advbase, DEFAULT_ADVBASE);
