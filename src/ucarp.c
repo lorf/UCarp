@@ -137,8 +137,8 @@ int main(int argc, char *argv[])
             break;
         }
         case 'N': {
-            if (strtoul(optarg, NULL, 0) > 10000 || strtol(optarg, NULL, 0) < 1) {
-                logfile(LOG_ERR, _("port must be between 1 and 10000."));
+            if (strtoul(optarg, NULL, 0) > 0xffff || strtol(optarg, NULL, 0) < 1) {
+                logfile(LOG_ERR, _("port must be between 1 and 65535."));
                 return 1;
             }
             port = (unsigned char) strtoul(optarg, NULL, 0);
